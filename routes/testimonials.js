@@ -48,7 +48,7 @@ router.post('/', upload.single('file'), async (req, res) => {
         const newTestimonial = new Testimonial({
             name, role, type, rating, result,
             content: finalContent,
-            published: false
+            published: true // Set to true so it shows up immediately on the frontend
         });
 
         await newTestimonial.save();
@@ -61,11 +61,12 @@ router.post('/', upload.single('file'), async (req, res) => {
 // DELETE
 router.delete('/:id', async (req, res) => {
     try {
-        const testimonial = await Testimonial.findById(req.id);
+        // FIX: Grab the correct ID parameter
+        const testimonial = await Testimonial.findById(req.params.id);
         if (!testimonial) return res.status(404).json({ message: "Not found" });
 
-        // Clean up file from disk
-        if (testimonial.type !== 'text' && testimonial.content.startsWith('/media')) {
+        // Clean up file from disk (with safety check)
+        if (testimonial.type !== 'text' && testimonial.content && testimonial.content.startsWith('/media')) {
             const filePath = path.join('/var/www', testimonial.content);
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
