@@ -5,73 +5,78 @@ const path = require('path');
 const fs = require('fs');
 const Testimonial = require('../models/Testimonial');
 
-// NEW STORAGE CONFIG: Points to the dedicated media folder
+// 1. CONFIGURE STORAGE TO PROFESSIONAL PATH
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, '/var/www/media/testimonials'); 
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
-  }
+    destination: (req, file, cb) => {
+        const dir = '/var/www/media/testimonials';
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        cb(null, Date.now() + '-' + file.originalname);
+    }
 });
 
 const upload = multer({ 
-  storage: storage,
-  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+    storage,
+    limits: { fileSize: 200 * 1024 * 1024 } // 200MB Limit
 });
 
-// POST: Add Testimonial
-router.post('/', upload.single('media'), async (req, res) => {
-  try {
-    const { type, name, role, text, result, rating } = req.body;
-    
-    // Updated path for the database entry
-    const content = req.file ? `/media/testimonials/${req.file.filename}` : text;
-
-    const newTestimonial = new Testimonial({
-      type, name, role, content, result, rating: Number(rating),
-      published: true 
-    });
-
-    await newTestimonial.save();
-    res.status(201).json({ success: true, data: newTestimonial });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// GET: All Testimonials
+// GET ALL
 router.get('/', async (req, res) => {
-  try {
-    const data = await Testimonial.find().sort({ createdAt: -1 });
-    res.json({ success: true, data });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Server Error' });
-  }
+    try {
+        const testimonials = await Testimonial.find().sort({ createdAt: -1 });
+        res.json({ success: true, data: testimonials });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
 });
 
-// DELETE: Real-time removal from New Path
+// CREATE NEW
+router.post('/', upload.single('file'), async (req, res) => {
+    try {
+        const { name, role, type, content, rating, result } = req.body;
+        
+        let finalContent = content;
+        if (req.file) {
+            // Save as /media/testimonials/filename.mp4 for Nginx to serve
+            finalContent = `/media/testimonials/${req.file.filename}`;
+        }
+
+        const newTestimonial = new Testimonial({
+            name, role, type, rating, result,
+            content: finalContent,
+            published: false
+        });
+
+        await newTestimonial.save();
+        res.status(201).json({ success: true, data: newTestimonial });
+    } catch (err) {
+        res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+// DELETE
 router.delete('/:id', async (req, res) => {
-  try {
-    const testimonial = await Testimonial.findById(req.params.id);
-    
-    if (!testimonial) {
-      return res.status(404).json({ success: false, message: 'Testimonial not found' });
-    }
+    try {
+        const testimonial = await Testimonial.findById(req.id);
+        if (!testimonial) return res.status(404).json({ message: "Not found" });
 
-    // UPDATED DELETE LOGIC: Looks in the new /var/www/media folder
-    if (testimonial.type !== 'text' && testimonial.content.startsWith('/media')) {
-      const filePath = path.join('/var/www', testimonial.content);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath); 
-      }
-    }
+        // Clean up file from disk
+        if (testimonial.type !== 'text' && testimonial.content.startsWith('/media')) {
+            const filePath = path.join('/var/www', testimonial.content);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
 
-    await testimonial.deleteOne();
-    res.json({ success: true, message: 'Deleted successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Delete failed on server' });
-  }
+        await Testimonial.findByIdAndDelete(req.params.id);
+        res.json({ success: true, message: "Deleted successfully" });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
 });
 
 module.exports = router;
