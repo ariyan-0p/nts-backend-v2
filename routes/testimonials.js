@@ -34,8 +34,8 @@ router.get('/', async (req, res) => {
     }
 });
 
-// CREATE NEW
-router.post('/', upload.single('file'), async (req, res) => {
+// CREATE NEW - (CRITICAL FIX: Matches frontend 'media' keyword)
+router.post('/', upload.single('media'), async (req, res) => {
     try {
         const { name, role, type, content, rating, result } = req.body;
         
@@ -61,7 +61,6 @@ router.post('/', upload.single('file'), async (req, res) => {
 // DELETE
 router.delete('/:id', async (req, res) => {
     try {
-        // FIX: Grab the correct ID parameter
         const testimonial = await Testimonial.findById(req.params.id);
         if (!testimonial) return res.status(404).json({ message: "Not found" });
 
